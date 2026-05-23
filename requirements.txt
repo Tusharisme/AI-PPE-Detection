@@ -1,14 +1,9 @@
-streamlit
-opencv-python-headless==4.7.0.72
-ultralytics
-pandas
-numpy<2.0.0
-Pillow
-streamlit-extras
-protobuf
-torch
-torchvision
-matplotlib
-scikit-learn
-requests
+--extra-index-url https://download.pytorch.org/whl/cpu
 
+boto3==1.35.90
+numpy==1.26.4
+opencv-python-headless==4.10.0.84
+pymysql==1.1.1
+torch==2.5.1+cpu
+torchvision==0.20.1+cpu
+ultralytics==8.3.49

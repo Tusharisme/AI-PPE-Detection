@@ -1,0 +1,13 @@
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.log
+violation_logs.csv
+*_creds.txt
+attendance-files/
+local_ppe_test/
+local_image_test/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
