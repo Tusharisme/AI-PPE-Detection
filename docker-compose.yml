@@ -1,0 +1,18 @@
+services:
+  ppe-detection-worker:
+    build:
+      context: .
+    image: ai-ppe-detection:latest
+    environment:
+      MODEL_PATH: /app/best.pt
+      PPE_CREDS_FILE: /app/ppe_creds.txt
+      PPE_SNAPSHOT_INTERVAL: "10"
+      DETECTION_CONFIDENCE: "0.25"
+      DETECTION_IOU: "0.45"
+      IMAGE_SIZE: "1280"
+      CAPTURE_WORKERS: "10"
+      UPLOAD_WORKERS: "10"
+      DETECTION_BATCH_SIZE: "8"
+      DEBUG: "FALSE"
+      DRY_RUN: "${DRY_RUN:-FALSE}"
+    restart: unless-stopped

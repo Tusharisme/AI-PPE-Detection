@@ -1,0 +1,560 @@
+Table: OfficeLens_ar_cameras
+----------------------------
+  - cam_id (INTEGER)
+  - enabled (TINYINT) [Default: '1']
+  Foreign Keys:
+    - ['cam_id'] -> OfficeLens_cameras.['id']
+
+Table: OfficeLens_ar_detections
+-------------------------------
+  - id (BIGINT)
+  - frame_id (BIGINT)
+  - x1 (FLOAT)
+  - y1 (FLOAT)
+  - x2 (FLOAT)
+  - y2 (FLOAT)
+  - activity_label (VARCHAR(100)) [Nullable]
+  - employee_id (INTEGER) [Nullable]
+  Foreign Keys:
+    - ['frame_id'] -> OfficeLens_ar_frames.['id']
+    - ['employee_id'] -> OfficeLens_employees.['id']
+
+Table: OfficeLens_ar_frames
+---------------------------
+  - id (BIGINT)
+  - cam_id (INTEGER)
+  - timestamp (DATETIME)
+  - frame_url (VARCHAR(512))
+  Foreign Keys:
+    - ['cam_id'] -> OfficeLens_cameras.['id']
+
+Table: OfficeLens_attendance
+----------------------------
+  - id (INTEGER)
+  - e_id (INTEGER) [Nullable]
+  - frame_id (INTEGER)
+  - x (INTEGER)
+  - y (INTEGER)
+  - w (INTEGER)
+  - h (INTEGER)
+  - det_conf (FLOAT)
+  - fr_conf (FLOAT) [Nullable]
+  - created_at (TIMESTAMP) [Nullable] [Default: CURRENT_TIMESTAMP]
+  Foreign Keys:
+    - ['e_id'] -> OfficeLens_employees.['id']
+    - ['frame_id'] -> OfficeLens_attendance_frames.['id']
+
+Table: OfficeLens_attendance_cameras
+------------------------------------
+  - cam_id (INTEGER)
+  - status (TINYINT) [Nullable] [Default: '1']
+  - detection_confidence (FLOAT) [Nullable] [Default: '0.3']
+  - detection_iou (FLOAT) [Nullable] [Default: '0.4']
+  - min_face_size (INTEGER) [Nullable] [Default: '40']
+  - fr_threshold_large (FLOAT) [Nullable] [Default: '0.35']
+  - fr_threshold_medium (FLOAT) [Nullable] [Default: '0.3']
+  - fr_threshold_small (FLOAT) [Nullable] [Default: '0.25']
+  - fr_threshold_tiny (FLOAT) [Nullable] [Default: '0.2']
+  - created_at (TIMESTAMP) [Nullable] [Default: CURRENT_TIMESTAMP]
+  - updated_at (TIMESTAMP) [Nullable] [Default: CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP]
+  Foreign Keys:
+    - ['cam_id'] -> OfficeLens_cameras.['id']
+
+Table: OfficeLens_attendance_frames
+-----------------------------------
+  - id (INTEGER)
+  - cam_id (INTEGER)
+  - timestamp (TIMESTAMP) [Default: CURRENT_TIMESTAMP]
+  - frame_url (VARCHAR(1024) COLLATE "utf8mb4_unicode_ci")
+  - created_at (TIMESTAMP) [Nullable] [Default: CURRENT_TIMESTAMP]
+  Foreign Keys:
+    - ['cam_id'] -> OfficeLens_cameras.['id']
+
+Table: OfficeLens_camera_status_history
+---------------------------------------
+  - id (INTEGER)
+  - cam_id (INTEGER)
+  - kvs_status (VARCHAR(20) COLLATE "utf8mb4_unicode_ci")
+  - checked_at (DATETIME) [Default: CURRENT_TIMESTAMP]
+  Foreign Keys:
+    - ['cam_id'] -> OfficeLens_cameras.['id']
+
+Table: OfficeLens_cameras
+-------------------------
+  - name (VARCHAR(255))
+  - code (VARCHAR(50))
+  - location (VARCHAR(255)) [Nullable]
+  - location_description (VARCHAR(255)) [Nullable]
+  - mac_address (VARCHAR(17)) [Nullable]
+  - rtsp_url (VARCHAR(512)) [Nullable]
+  - username (VARCHAR(255)) [Nullable]
+  - password (VARCHAR(255)) [Nullable]
+  - s_id (INTEGER) [Nullable]
+  - status (ENUM)
+  - id (INTEGER)
+  - created_at (DATETIME)
+  - updated_at (DATETIME)
+  - frame_url (VARCHAR(512) COLLATE "utf8mb4_unicode_ci") [Nullable]
+  - c_id (INTEGER)
+  Foreign Keys:
+    - ['s_id'] -> OfficeLens_spaces.['id']
+
+Table: OfficeLens_cameras_backup_20260317_063006
+------------------------------------------------
+  - name (VARCHAR(255))
+  - code (VARCHAR(50))
+  - location (VARCHAR(255)) [Nullable]
+  - location_description (VARCHAR(255)) [Nullable]
+  - mac_address (VARCHAR(17)) [Nullable]
+  - rtsp_url (VARCHAR(512)) [Nullable]
+  - username (VARCHAR(255)) [Nullable]
+  - password (VARCHAR(255)) [Nullable]
+  - s_id (INTEGER) [Nullable]
+  - status (ENUM)
+  - id (INTEGER) [Default: '0']
+  - created_at (DATETIME)
+  - updated_at (DATETIME)
+  - frame_url (VARCHAR(512) COLLATE "utf8mb4_unicode_ci") [Nullable]
+
+Table: OfficeLens_clients_backup_20260317_063006
+------------------------------------------------
+  - name (VARCHAR(255))
+  - organization (VARCHAR(255)) [Nullable]
+  - location (VARCHAR(255)) [Nullable]
+  - id (INTEGER) [Default: '0']
+  - created_at (DATETIME)
+  - updated_at (DATETIME)
+
+Table: OfficeLens_crowdcount
+----------------------------
+  - id (INTEGER)
+  - cam_id (INTEGER)
+  - count (INTEGER) [Nullable]
+  - frame_url (VARCHAR(512) COLLATE "utf8mb4_unicode_ci") [Nullable]
+  - timestamp (DATETIME)
+  - created_at (TIMESTAMP) [Nullable] [Default: CURRENT_TIMESTAMP]
+  Foreign Keys:
+    - ['cam_id'] -> OfficeLens_cameras.['id']
+
+Table: OfficeLens_crowdcount_cameras
+------------------------------------
+  - id (INTEGER)
+  - camera_id (INTEGER)
+  - enabled (TINYINT) [Nullable] [Default: '1']
+  - created_at (TIMESTAMP) [Nullable] [Default: CURRENT_TIMESTAMP]
+  - updated_at (TIMESTAMP) [Nullable] [Default: CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP]
+  Foreign Keys:
+    - ['camera_id'] -> OfficeLens_cameras.['id']
+
+Table: OfficeLens_dab
+---------------------
+  - id (INTEGER)
+  - frame_id (INTEGER)
+  - area_id (INTEGER)
+  - x (INTEGER)
+  - y (INTEGER)
+  - w (INTEGER)
+  - h (INTEGER)
+  Foreign Keys:
+    - ['frame_id'] -> OfficeLens_dab_frames.['id']
+    - ['area_id'] -> OfficeLens_dab_areas.['id']
+
+Table: OfficeLens_dab_areas
+---------------------------
+  - id (INTEGER)
+  - cam_id (INTEGER)
+  - coordinates (TEXT)
+  - priority (INTEGER)
+  Foreign Keys:
+    - ['cam_id'] -> OfficeLens_cameras.['id']
+
+Table: OfficeLens_dab_employees
+-------------------------------
+  - id (INTEGER)
+  - area_id (INTEGER)
+  - employee_id (INTEGER)
+  Foreign Keys:
+    - ['area_id'] -> OfficeLens_dab_areas.['id']
+    - ['employee_id'] -> OfficeLens_employees.['id']
+
+Table: OfficeLens_dab_frames
+----------------------------
+  - id (INTEGER)
+  - frame_url (TEXT)
+  - timestamp (DATETIME)
+
+Table: OfficeLens_employee_cameras
+----------------------------------
+  - id (INTEGER)
+  - employee_id (INTEGER)
+  - camera_id (INTEGER)
+  - created_at (INTEGER)
+  - designated_area_x (FLOAT) [Nullable]
+  - designated_area_y (FLOAT) [Nullable]
+  - designated_area_width (FLOAT) [Nullable]
+  - designated_area_height (FLOAT) [Nullable]
+  - designated_area_name (VARCHAR(255)) [Nullable]
+  - reference_frame_id (INTEGER) [Nullable]
+  Foreign Keys:
+    - ['reference_frame_id'] -> OfficeLens_crowdcount.['id']
+    - ['employee_id'] -> OfficeLens_employees.['id']
+    - ['camera_id'] -> OfficeLens_cameras.['id']
+
+Table: OfficeLens_employees
+---------------------------
+  - employee_id (VARCHAR(50))
+  - name (VARCHAR(255))
+  - father_name (VARCHAR(255)) [Nullable]
+  - aadhar_number (VARCHAR(12)) [Nullable]
+  - pan_number (VARCHAR(10)) [Nullable]
+  - email (VARCHAR(255)) [Nullable]
+  - mobile_primary (VARCHAR(15)) [Nullable]
+  - mobile_secondary (VARCHAR(15)) [Nullable]
+  - date_of_birth (DATE) [Nullable]
+  - gender (VARCHAR(20)) [Nullable]
+  - address (TEXT) [Nullable]
+  - city (VARCHAR(100)) [Nullable]
+  - state (VARCHAR(100)) [Nullable]
+  - pincode (VARCHAR(10)) [Nullable]
+  - designation (VARCHAR(255)) [Nullable]
+  - date_of_joining (DATE) [Nullable]
+  - role (ENUM)
+  - s_id (INTEGER)
+  - reporting_to_id (INTEGER) [Nullable]
+  - reporting_time (TIME) [Nullable]
+  - leaving_time (TIME) [Nullable]
+  - weekly_off (VARCHAR(50)) [Nullable]
+  - photo_folder (TEXT COLLATE "utf8mb4_0900_ai_ci") [Nullable]
+  - is_embedded (INTEGER) [Nullable] [Default: '0']
+  - embedding (TEXT) [Nullable]
+  - is_face_registered (TINYINT)
+  - is_active (TINYINT)
+  - remarks (TEXT) [Nullable]
+  - id (INTEGER)
+  - created_at (DATETIME)
+  - updated_at (DATETIME) [Default: CURRENT_TIMESTAMP]
+  Foreign Keys:
+    - ['s_id'] -> OfficeLens_spaces.['id']
+    - ['reporting_to_id'] -> OfficeLens_employees.['id']
+
+Table: OfficeLens_entryexit
+---------------------------
+  - id (INTEGER)
+  - cam_id (INTEGER)
+  - timestamp (DATETIME)
+  - entry (INTEGER) [Nullable]
+  - exit (INTEGER) [Nullable]
+  Foreign Keys:
+    - ['cam_id'] -> OfficeLens_cameras.['id']
+
+Table: OfficeLens_entryexit_cameras
+-----------------------------------
+  - id (INTEGER)
+  - cam_id (INTEGER)
+  - access (ENUM)
+  - dir_x1 (INTEGER)
+  - dir_y1 (INTEGER)
+  - dir_x2 (INTEGER)
+  - dir_y2 (INTEGER)
+  - x1 (INTEGER)
+  - y1 (INTEGER)
+  - x2 (INTEGER)
+  - y2 (INTEGER)
+  - mode (ENUM) [Nullable]
+  - enabled (TINYINT) [Nullable] [Default: '1']
+  - created_at (TIMESTAMP) [Nullable] [Default: CURRENT_TIMESTAMP]
+  - updated_at (TIMESTAMP) [Nullable] [Default: CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP]
+  Foreign Keys:
+    - ['cam_id'] -> OfficeLens_cameras.['id']
+
+Table: OfficeLens_entryexit_main_cameras
+----------------------------------------
+  - cam_id (INTEGER)
+  Foreign Keys:
+    - ['cam_id'] -> OfficeLens_cameras.['id']
+
+Table: OfficeLens_frames
+------------------------
+  - cam_id (INTEGER)
+  - timestamp (TIMESTAMP)
+  - frame_url (VARCHAR(1024))
+  - id (INTEGER)
+  - created_at (DATETIME)
+  - updated_at (DATETIME)
+  Foreign Keys:
+    - ['cam_id'] -> OfficeLens_cameras.['id']
+
+Table: OfficeLens_instance_logs
+-------------------------------
+  - id (INTEGER)
+  - instance_id (VARCHAR(50))
+  - docker_id (VARCHAR(100))
+  - service_type (VARCHAR(50)) [Default: '']
+  - camera_ids (TEXT) [Nullable]
+  - status (ENUM) [Default: 'running']
+  - created_at (DATETIME) [Default: CURRENT_TIMESTAMP(6)]
+  - updated_at (DATETIME) [Default: CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6)]
+  - is_manually_started (TINYINT) [Default: '1']
+  - last_heartbeat_at (DATETIME) [Nullable]
+  - uptime_seconds (INTEGER) [Nullable]
+  - mqtt_connected (TINYINT) [Nullable]
+
+Table: OfficeLens_pending_starts
+--------------------------------
+  - id (INTEGER)
+  - service_type (VARCHAR(50) COLLATE "utf8mb4_unicode_ci")
+  - camera_ids (TEXT COLLATE "utf8mb4_unicode_ci") [Nullable]
+  - reserved_at (DATETIME)
+  - created_at (DATETIME) [Default: CURRENT_TIMESTAMP]
+  - updated_at (DATETIME) [Default: CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP]
+
+Table: OfficeLens_persontrace_cameras
+-------------------------------------
+  - cam_id (INTEGER)
+  - status (ENUM) [Default: 'INACTIVE']
+  - bbox_body_threshold (INTEGER) [Default: '5000']
+  - bbox_face_threshold (INTEGER) [Default: '1000']
+  - body_pre_cluster_threshold (FLOAT) [Default: '0.25']
+  - face_pre_cluster_threshold (FLOAT) [Default: '0.25']
+  - body_nms_iou_threshold (FLOAT) [Default: '0.45']
+  - face_nms_iou_threshold (FLOAT) [Default: '0.45']
+  - body_skip_frames (INTEGER) [Default: '0']
+  - face_skip_frames (INTEGER) [Default: '0']
+  Foreign Keys:
+    - ['cam_id'] -> OfficeLens_cameras.['id']
+
+Table: OfficeLens_schedules
+---------------------------
+  - id (INTEGER)
+  - service_type (VARCHAR(255))
+  - camera_ids (VARCHAR(255)) [Nullable]
+  - start_time (VARCHAR(10))
+  - end_time (VARCHAR(10))
+  - days_of_week (VARCHAR(255))
+  - timezone (VARCHAR(50))
+  - eventbridge_start_rule_name (VARCHAR(255))
+  - eventbridge_stop_rule_name (VARCHAR(255))
+  - is_active (TINYINT) [Nullable] [Default: '1']
+  - created_at (TIMESTAMP) [Nullable] [Default: CURRENT_TIMESTAMP]
+  - updated_at (TIMESTAMP) [Nullable] [Default: CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP]
+
+Table: OfficeLens_sf
+--------------------
+  - id (INTEGER)
+  - suspect_id (INTEGER)
+  - cam_id (INTEGER)
+  - timestamp (DATETIME)
+  - match (FLOAT)
+  - frame_url (TEXT) [Nullable]
+  Foreign Keys:
+    - ['suspect_id'] -> OfficeLens_sf_suspects.['id']
+    - ['cam_id'] -> OfficeLens_cameras.['id']
+
+Table: OfficeLens_sf_cameras
+----------------------------
+  - id (INTEGER)
+  - cam_id (INTEGER)
+  - status (TINYINT) [Default: '1']
+  - created_at (TIMESTAMP) [Nullable] [Default: CURRENT_TIMESTAMP]
+  - edited_at (TIMESTAMP) [Nullable] [Default: CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP]
+  Foreign Keys:
+    - ['cam_id'] -> OfficeLens_cameras.['id']
+
+Table: OfficeLens_sf_suspects
+-----------------------------
+  - id (INTEGER)
+  - c_id (INTEGER)
+  - name (VARCHAR(255)) [Nullable]
+  - embedding_url (TEXT) [Nullable]
+  - image_url (TEXT) [Nullable]
+  - created_at (TIMESTAMP) [Nullable] [Default: CURRENT_TIMESTAMP]
+  - edited_at (TIMESTAMP) [Nullable] [Default: CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP]
+  Foreign Keys:
+    - ['c_id'] -> OfficeLens_users.['id']
+
+Table: OfficeLens_spaces
+------------------------
+  - name (VARCHAR(255))
+  - c_id (INTEGER)
+  - code (VARCHAR(50))
+  - description (VARCHAR(500)) [Nullable]
+  - head_employee_id (INTEGER) [Nullable]
+  - id (INTEGER)
+  - created_at (DATETIME)
+  - updated_at (DATETIME)
+  Foreign Keys:
+    - ['head_employee_id'] -> OfficeLens_employees.['id']
+
+Table: OfficeLens_users
+-----------------------
+  - email (VARCHAR(255))
+  - hashed_password (VARCHAR(255))
+  - name (VARCHAR(255))
+  - phone (VARCHAR(20)) [Nullable]
+  - is_active (TINYINT)
+  - is_first_login (TINYINT)
+  - last_login (DATETIME) [Nullable]
+  - password_changed_at (DATETIME) [Nullable]
+  - profile_photo (TEXT) [Nullable]
+  - office_name (VARCHAR(255)) [Nullable]
+  - office_code (VARCHAR(50)) [Nullable]
+  - id (INTEGER)
+  - created_at (DATETIME)
+  - updated_at (DATETIME)
+
+Table: OfficeLens_users_backup_20260317_063006
+----------------------------------------------
+  - email (VARCHAR(255))
+  - hashed_password (VARCHAR(255))
+  - role (ENUM)
+  - name (VARCHAR(255))
+  - phone (VARCHAR(20)) [Nullable]
+  - c_id (INTEGER) [Nullable]
+  - is_active (TINYINT)
+  - is_first_login (TINYINT)
+  - last_login (DATETIME) [Nullable]
+  - password_changed_at (DATETIME) [Nullable]
+  - profile_photo (TEXT) [Nullable]
+  - office_name (VARCHAR(255)) [Nullable]
+  - office_code (VARCHAR(50)) [Nullable]
+  - id (INTEGER) [Default: '0']
+  - created_at (DATETIME)
+  - updated_at (DATETIME)
+
+Table: OfficeLens_vehicle_cameras
+---------------------------------
+  - id (INTEGER)
+  - cam_id (INTEGER)
+  - access (ENUM)
+  - dir_x1 (INTEGER)
+  - dir_y1 (INTEGER)
+  - dir_x2 (INTEGER)
+  - dir_y2 (INTEGER)
+  - x1 (INTEGER)
+  - y1 (INTEGER)
+  - x2 (INTEGER)
+  - y2 (INTEGER)
+  - enabled (TINYINT) [Default: '1']
+  - mode (ENUM) [Default: 'loose']
+  Foreign Keys:
+    - ['cam_id'] -> OfficeLens_cameras.['id']
+
+Table: OfficeLens_vehicle_detections
+------------------------------------
+  - id (BIGINT)
+  - frame_id (BIGINT)
+  - v_x (FLOAT)
+  - v_y (FLOAT)
+  - v_w (FLOAT)
+  - v_h (FLOAT)
+  - p_x (FLOAT) [Nullable]
+  - p_y (FLOAT) [Nullable]
+  - p_w (FLOAT) [Nullable]
+  - p_h (FLOAT) [Nullable]
+  - plate_number (VARCHAR(20)) [Nullable]
+  - vehicle_type (VARCHAR(50)) [Nullable]
+  - vehicle_conf (FLOAT)
+  - plate_conf (FLOAT) [Nullable]
+  Foreign Keys:
+    - ['frame_id'] -> OfficeLens_vehicle_frames.['id']
+
+Table: OfficeLens_vehicle_ee
+----------------------------
+  - id (BIGINT)
+  - cam_id (INTEGER)
+  - timestamp (DATETIME)
+  - entry_delta (INTEGER) [Nullable]
+  - exit_delta (INTEGER) [Nullable]
+  Foreign Keys:
+    - ['cam_id'] -> OfficeLens_cameras.['id']
+
+Table: OfficeLens_vehicle_frames
+--------------------------------
+  - id (BIGINT)
+  - cam_id (INTEGER)
+  - timestamp (DATETIME)
+  - frame_url (VARCHAR(512))
+  Foreign Keys:
+    - ['cam_id'] -> OfficeLens_cameras.['id']
+
+Table: alembic_version
+----------------------
+  - version_num (VARCHAR(32))
+
+Table: cameras
+--------------
+  - name (VARCHAR(255))
+  - code (VARCHAR(50))
+  - department_id (INTEGER) [Nullable]
+  - location_description (VARCHAR(255)) [Nullable]
+  - stream_url (VARCHAR(500)) [Nullable]
+  - id (INTEGER)
+  - created_at (DATETIME)
+  - updated_at (DATETIME)
+  Foreign Keys:
+    - ['department_id'] -> departments.['id']
+
+Table: departments
+------------------
+  - name (VARCHAR(255))
+  - code (VARCHAR(50))
+  - description (VARCHAR(500)) [Nullable]
+  - head_employee_id (INTEGER) [Nullable]
+  - id (INTEGER)
+  - created_at (DATETIME)
+  - updated_at (DATETIME)
+  Foreign Keys:
+    - ['head_employee_id'] -> employees.['id']
+
+Table: employees
+----------------
+  - employee_id (VARCHAR(50))
+  - full_name (VARCHAR(255))
+  - father_name (VARCHAR(255)) [Nullable]
+  - aadhar_number (VARCHAR(12)) [Nullable]
+  - pan_number (VARCHAR(10)) [Nullable]
+  - email (VARCHAR(255)) [Nullable]
+  - mobile_primary (VARCHAR(15)) [Nullable]
+  - mobile_secondary (VARCHAR(15)) [Nullable]
+  - date_of_birth (DATE) [Nullable]
+  - gender (VARCHAR(20)) [Nullable]
+  - address (TEXT) [Nullable]
+  - city (VARCHAR(100)) [Nullable]
+  - state (VARCHAR(100)) [Nullable]
+  - pincode (VARCHAR(10)) [Nullable]
+  - designation (VARCHAR(255)) [Nullable]
+  - date_of_joining (DATE) [Nullable]
+  - role (ENUM)
+  - department_id (INTEGER) [Nullable]
+  - reporting_to_id (INTEGER) [Nullable]
+  - reporting_time (TIME) [Nullable]
+  - leaving_time (TIME) [Nullable]
+  - weekly_off (VARCHAR(50)) [Nullable]
+  - photo_front (TEXT) [Nullable]
+  - photo_left (TEXT) [Nullable]
+  - photo_right (TEXT) [Nullable]
+  - face_encoding (TEXT) [Nullable]
+  - is_face_registered (TINYINT)
+  - is_active (TINYINT)
+  - remarks (TEXT) [Nullable]
+  - id (INTEGER)
+  - created_at (DATETIME)
+  - updated_at (DATETIME)
+  - camera_id (INTEGER) [Nullable]
+  Foreign Keys:
+    - ['department_id'] -> departments.['id']
+    - ['reporting_to_id'] -> employees.['id']
+    - ['camera_id'] -> cameras.['id']
+
+Table: rooms
+------------
+  - name (VARCHAR(255))
+  - code (VARCHAR(50))
+  - floor (INTEGER) [Nullable]
+  - building (VARCHAR(100)) [Nullable]
+  - description (VARCHAR(500)) [Nullable]
+  - is_restricted (TINYINT)
+  - capacity (INTEGER) [Nullable]
+  - id (INTEGER)
+  - created_at (DATETIME)
+  - updated_at (DATETIME)
