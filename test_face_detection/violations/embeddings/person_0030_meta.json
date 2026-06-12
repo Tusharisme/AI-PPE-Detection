@@ -1,0 +1,32 @@
+{
+  "person_id": "person_0030",
+  "first_seen": "2026-06-06T17:24:05.722230",
+  "total_violations": 4,
+  "embedding_count": 2,
+  "instances": [
+    {
+      "timestamp": "2026-06-06T17:24:05.722230",
+      "frame_id": "frame_0045",
+      "frame_path": "/mnt/storage/Tushar/AI-PPE-Detection/test_face_detection/violations/annotated_frames/frame_0045_annotated.jpg",
+      "face_crop_path": "/mnt/storage/Tushar/AI-PPE-Detection/test_face_detection/violations/violator_face_crops/frame_0045_person_0030_full_frame_face.jpg",
+      "violations_list": [
+        "NO-Safety Vest",
+        "NO-Safety Boots",
+        "NO-Safety Boots"
+      ],
+      "violation_count": 3,
+      "reid_similarity": 1.0
+    },
+    {
+      "timestamp": "2026-06-06T17:24:05.722230",
+      "frame_id": "frame_0045",
+      "frame_path": "/mnt/storage/Tushar/AI-PPE-Detection/test_face_detection/violations/annotated_frames/frame_0045_annotated.jpg",
+      "face_crop_path": "/mnt/storage/Tushar/AI-PPE-Detection/test_face_detection/violations/violator_face_crops/frame_0045_person_0030_full_frame_face.jpg",
+      "violations_list": [
+        "NO-Hardhat"
+      ],
+      "violation_count": 1,
+      "reid_similarity": 1.0
+    }
+  ]
+}

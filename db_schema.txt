@@ -323,6 +323,45 @@ Table: OfficeLens_persontrace_cameras
   Foreign Keys:
     - ['cam_id'] -> OfficeLens_cameras.['id']
 
+Table: OfficeLens_ppe_cameras
+-----------------------------
+  - cam_id (INTEGER)
+  Foreign Keys:
+    - ['cam_id'] -> OfficeLens_cameras.['id']
+
+Table: OfficeLens_ppe_detections
+--------------------------------
+  - id (BIGINT)
+  - frame_id (BIGINT)
+  - class_name (VARCHAR(100))
+  - confidence (FLOAT)
+  - x1 (FLOAT)
+  - y1 (FLOAT)
+  - x2 (FLOAT)
+  - y2 (FLOAT)
+  - person_id (INTEGER) [Nullable]
+  Foreign Keys:
+    - ['person_id'] -> OfficeLens_ppe_persons.['person_id']
+    - ['frame_id'] -> OfficeLens_ppe_frames.['id']
+
+Table: OfficeLens_ppe_frames
+----------------------------
+  - id (BIGINT)
+  - cam_id (INTEGER)
+  - timestamp (DATETIME)
+  - frame_url (VARCHAR(1024))
+  - created_at (TIMESTAMP) [Nullable] [Default: CURRENT_TIMESTAMP]
+  Foreign Keys:
+    - ['cam_id'] -> OfficeLens_cameras.['id']
+
+Table: OfficeLens_ppe_persons
+-----------------------------
+  - person_id (INTEGER)
+  - first_seen (DATETIME)
+  - total_violations (INTEGER) [Default: '0']
+  - embedding_s3_url (VARCHAR(512))
+  - crop_s3_url (VARCHAR(512))
+
 Table: OfficeLens_schedules
 ---------------------------
   - id (INTEGER)
@@ -477,10 +516,6 @@ Table: OfficeLens_vehicle_frames
   Foreign Keys:
     - ['cam_id'] -> OfficeLens_cameras.['id']
 
-Table: alembic_version
-----------------------
-  - version_num (VARCHAR(32))
-
 Table: cameras
 --------------
   - name (VARCHAR(255))
@@ -545,16 +580,3 @@ Table: employees
     - ['department_id'] -> departments.['id']
     - ['reporting_to_id'] -> employees.['id']
     - ['camera_id'] -> cameras.['id']
-
-Table: rooms
-------------
-  - name (VARCHAR(255))
-  - code (VARCHAR(50))
-  - floor (INTEGER) [Nullable]
-  - building (VARCHAR(100)) [Nullable]
-  - description (VARCHAR(500)) [Nullable]
-  - is_restricted (TINYINT)
-  - capacity (INTEGER) [Nullable]
-  - id (INTEGER)
-  - created_at (DATETIME)
-  - updated_at (DATETIME)

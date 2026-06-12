@@ -82,6 +82,21 @@ def main() -> int:
     parser.add_argument("--creds", default="ppe_creds.txt", help="Path to PPE credentials INI file")
     parser.add_argument("--repository", default="ai-ppe-detection", help="ECR repository name")
     parser.add_argument("--tag", default="latest", help="Docker/ECR image tag")
+    parser.add_argument(
+        "--model-path",
+        default="runs/detect/training/runs/ppe2_archive_4class_from_best_150ep_pat20_v1/weights/best.pt",
+        help="PPE model weights path to copy into the Docker image as /app/best.pt",
+    )
+    parser.add_argument(
+        "--person-model-path",
+        default="runs/detect/training/runs/ppe_person_yolov8n_finetune_v1/weights/best.pt",
+        help="COCO person detector weights path to copy into the Docker image as /app/person_model.pt",
+    )
+    parser.add_argument(
+        "--worker-source",
+        default="ppe_worker_4.py",
+        help="Worker script to copy into the Docker image as /app/ppe_worker.py",
+    )
     parser.add_argument("--no-build", action="store_true", help="Skip docker build and only tag/push")
     args = parser.parse_args()
 
@@ -94,7 +109,28 @@ def main() -> int:
         remote_image = f"{repository_uri}:{args.tag}"
 
         if not args.no_build:
-            run(["docker", "build", "-t", local_image, "."])
+            model_path = Path(args.model_path)
+            if not model_path.exists():
+                raise FileNotFoundError(f"PPE model weights not found: {model_path}")
+            person_model_path = Path(args.person_model_path)
+            if not person_model_path.exists():
+                raise FileNotFoundError(f"Person model weights not found: {person_model_path}")
+            worker_source = Path(args.worker_source)
+            if not worker_source.exists():
+                raise FileNotFoundError(f"Worker script not found: {worker_source}")
+            run([
+                "docker",
+                "build",
+                "--build-arg",
+                f"MODEL_SOURCE={args.model_path}",
+                "--build-arg",
+                f"PERSON_MODEL_SOURCE={args.person_model_path}",
+                "--build-arg",
+                f"WORKER_SOURCE={args.worker_source}",
+                "-t",
+                local_image,
+                ".",
+            ])
 
         docker_login(ecr_client)
         run(["docker", "tag", local_image, remote_image])

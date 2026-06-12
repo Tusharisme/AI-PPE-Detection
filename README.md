@@ -129,6 +129,13 @@ python3 test_kvs_ppe.py \
   --save-dir local_ppe_test
 ```
 
+## Fine-Tuning
+
+Boot/no-boot fine-tuning tooling is under `training/`. See
+`training/README.md` for the local GPU setup, dataset merge command, small-run
+training command, and validation steps. Training data and run outputs are
+excluded from both git and the Docker image.
+
 ## ECR Push
 
 Use the Python helper when the AWS CLI is unavailable:
