@@ -1,0 +1,60 @@
+{
+  "person_id": "person_0029",
+  "first_seen": "2026-06-06T17:24:03.450489",
+  "total_violations": 12,
+  "embedding_count": 4,
+  "instances": [
+    {
+      "timestamp": "2026-06-06T17:24:03.450489",
+      "frame_id": "frame_0036",
+      "frame_path": "/mnt/storage/Tushar/AI-PPE-Detection/test_face_detection/violations/annotated_frames/frame_0036_annotated.jpg",
+      "face_crop_path": "/mnt/storage/Tushar/AI-PPE-Detection/test_face_detection/violations/violator_face_crops/frame_0036_person_0029_full_frame_face.jpg",
+      "violations_list": [
+        "NO-Safety Vest",
+        "NO-Hardhat",
+        "NO-Safety Boots"
+      ],
+      "violation_count": 3,
+      "reid_similarity": 1.0
+    },
+    {
+      "timestamp": "2026-06-06T17:24:03.847321",
+      "frame_id": "frame_0038",
+      "frame_path": "/mnt/storage/Tushar/AI-PPE-Detection/test_face_detection/violations/annotated_frames/frame_0038_annotated.jpg",
+      "face_crop_path": "/mnt/storage/Tushar/AI-PPE-Detection/test_face_detection/violations/violator_face_crops/frame_0038_person_0029_full_frame_face.jpg",
+      "violations_list": [
+        "NO-Safety Vest",
+        "NO-Hardhat",
+        "NO-Safety Boots"
+      ],
+      "violation_count": 3,
+      "reid_similarity": 0.750756
+    },
+    {
+      "timestamp": "2026-06-06T17:24:04.129856",
+      "frame_id": "frame_0039",
+      "frame_path": "/mnt/storage/Tushar/AI-PPE-Detection/test_face_detection/violations/annotated_frames/frame_0039_annotated.jpg",
+      "face_crop_path": "/mnt/storage/Tushar/AI-PPE-Detection/test_face_detection/violations/violator_face_crops/frame_0039_person_0029_full_frame_face.jpg",
+      "violations_list": [
+        "NO-Safety Vest",
+        "NO-Safety Boots",
+        "NO-Hardhat"
+      ],
+      "violation_count": 3,
+      "reid_similarity": 0.805739
+    },
+    {
+      "timestamp": "2026-06-06T17:24:04.415323",
+      "frame_id": "frame_0040",
+      "frame_path": "/mnt/storage/Tushar/AI-PPE-Detection/test_face_detection/violations/annotated_frames/frame_0040_annotated.jpg",
+      "face_crop_path": "/mnt/storage/Tushar/AI-PPE-Detection/test_face_detection/violations/violator_face_crops/frame_0040_person_0029_full_frame_face.jpg",
+      "violations_list": [
+        "NO-Safety Vest",
+        "NO-Safety Boots",
+        "NO-Hardhat"
+      ],
+      "violation_count": 3,
+      "reid_similarity": 0.926768
+    }
+  ]
+}

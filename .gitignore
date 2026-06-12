@@ -1,4 +1,5 @@
 .venv/
+.train-venv/
 venv/
 __pycache__/
 *.py[cod]
@@ -8,6 +9,10 @@ violation_logs.csv
 attendance-files/
 local_ppe_test/
 local_image_test/
+local_finetune_test/
+training/datasets/
+training/runs/
+training/.cache/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
