@@ -81,20 +81,25 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Build and push PPE worker image to ECR")
     parser.add_argument("--creds", default="ppe_creds.txt", help="Path to PPE credentials INI file")
     parser.add_argument("--repository", default="ai-ppe-detection", help="ECR repository name")
-    parser.add_argument("--tag", default="latest", help="Docker/ECR image tag")
+    parser.add_argument("--tag", default="ppe-transformer-v1", help="Docker/ECR image tag")
     parser.add_argument(
         "--model-path",
-        default="runs/detect/training/runs/ppe2_archive_4class_from_best_150ep_pat20_v1/weights/best.pt",
-        help="PPE model weights path to copy into the Docker image as /app/best.pt",
+        default="training/runs/ppe_v3_person_rfdetr_medium_1024_batch6_lr5e5_v2/checkpoint_best_ema.pth",
+        help="Single Person+PPE model weights path to copy into the Docker image",
+    )
+    parser.add_argument(
+        "--model-target",
+        default="checkpoint_best_ema.pth",
+        help="Filename to use for the model inside /app",
     )
     parser.add_argument(
         "--person-model-path",
-        default="runs/detect/training/runs/ppe_person_yolov8n_finetune_v1/weights/best.pt",
-        help="COCO person detector weights path to copy into the Docker image as /app/person_model.pt",
+        default="",
+        help="Deprecated two-model option. Leave empty for the single-model worker.",
     )
     parser.add_argument(
         "--worker-source",
-        default="ppe_worker_4.py",
+        default="ppe_worker_5.py",
         help="Worker script to copy into the Docker image as /app/ppe_worker.py",
     )
     parser.add_argument("--no-build", action="store_true", help="Skip docker build and only tag/push")
@@ -112,25 +117,28 @@ def main() -> int:
             model_path = Path(args.model_path)
             if not model_path.exists():
                 raise FileNotFoundError(f"PPE model weights not found: {model_path}")
-            person_model_path = Path(args.person_model_path)
-            if not person_model_path.exists():
-                raise FileNotFoundError(f"Person model weights not found: {person_model_path}")
             worker_source = Path(args.worker_source)
             if not worker_source.exists():
                 raise FileNotFoundError(f"Worker script not found: {worker_source}")
-            run([
+            build_command = [
                 "docker",
                 "build",
                 "--build-arg",
                 f"MODEL_SOURCE={args.model_path}",
                 "--build-arg",
-                f"PERSON_MODEL_SOURCE={args.person_model_path}",
+                f"MODEL_TARGET={args.model_target}",
                 "--build-arg",
                 f"WORKER_SOURCE={args.worker_source}",
                 "-t",
                 local_image,
                 ".",
-            ])
+            ]
+            if args.person_model_path:
+                person_model_path = Path(args.person_model_path)
+                if not person_model_path.exists():
+                    raise FileNotFoundError(f"Person model weights not found: {person_model_path}")
+                build_command[4:4] = ["--build-arg", f"PERSON_MODEL_SOURCE={args.person_model_path}"]
+            run(build_command)
 
         docker_login(ecr_client)
         run(["docker", "tag", local_image, remote_image])

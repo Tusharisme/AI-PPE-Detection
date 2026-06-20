@@ -44,6 +44,7 @@ Architecture overview
 
 Environment variables (all optional — defaults shown):
   PPE_CREDS_FILE              ppe_creds.txt
+  SINGLE_MODEL_MODE           FALSE
   PERSON_MODEL_PATH           ./person_model.pt
   PPE_MODEL_PATH              ./best.pt
   FACE_MODEL_PATH             ./yolov8n-face.pt
@@ -199,8 +200,12 @@ DEBUG   = _env_bool("DEBUG",   False)
 DRY_RUN = _env_bool("DRY_RUN", False)
 
 PPE_CREDS_FILE    = _env("PPE_CREDS_FILE",    "ppe_creds.txt")
-PERSON_MODEL_PATH = _env("PERSON_MODEL_PATH", "../runs/detect/training/runs/ppe_person_yolov8n_finetune_v1/weights/best.pt")
+SINGLE_MODEL_MODE = _env_bool("SINGLE_MODEL_MODE", False)
 PPE_MODEL_PATH    = _env("PPE_MODEL_PATH",    "../runs/detect/training/runs/ppe2_archive_4class_from_best_150ep_pat20_v1/weights/best.pt")
+PERSON_MODEL_PATH = _env(
+    "PERSON_MODEL_PATH",
+    PPE_MODEL_PATH if SINGLE_MODEL_MODE else "../runs/detect/training/runs/ppe_person_yolov8n_finetune_v1/weights/best.pt",
+)
 FACE_MODEL_PATH   = _env("FACE_MODEL_PATH",   "./yolov8n-face.pt")
 
 PPE_SNAPSHOT_INTERVAL   = _env_int("PPE_SNAPSHOT_INTERVAL",   40)
@@ -258,6 +263,10 @@ PERSON_MIN_BOX_HEIGHT    = _env_float("PERSON_MIN_BOX_HEIGHT",    45.0)
 PERSON_MIN_ASPECT_RATIO  = _env_float("PERSON_MIN_ASPECT_RATIO",  1.10)
 PERSON_MAX_ASPECT_RATIO  = _env_float("PERSON_MAX_ASPECT_RATIO",  8.00)
 NO_VIOLATION_MIN_PERSON_HEIGHT = _env_int("NO_VIOLATION_MIN_PERSON_HEIGHT", 45)
+NO_VIOLATION_RECHECK_ENABLED = _env_bool("NO_VIOLATION_RECHECK_ENABLED", True)
+NO_VIOLATION_RECHECK_IMAGE_SIZE = _env_int("NO_VIOLATION_RECHECK_IMAGE_SIZE", 960)
+NO_VIOLATION_RECHECK_CONF_MULTIPLIER = _env_float("NO_VIOLATION_RECHECK_CONF_MULTIPLIER", 1.25)
+NO_VIOLATION_RECHECK_PERSON_CONF = _env_float("NO_VIOLATION_RECHECK_PERSON_CONF", 0.50)
 
 # F3 — per-person crop PPE inference
 ENABLE_CROP_PPE         = _env_bool("ENABLE_CROP_PPE",         True)
@@ -330,6 +339,7 @@ facenet_device:      Optional[torch.device]   = None
 id_store:            Optional["IdentityStore"] = None
 
 camera_sources:      Dict[str, str]               = {}
+camera_project_ids:  Dict[str, Optional[int]]     = {}
 _kvs_url_cache:      Dict[str, Tuple[str, float]] = {}
 _last_frame_hashes:  Dict[str, int]               = {}   # F7 — perceptual dedup
 last_camera_refresh: float                        = 0.0
@@ -832,6 +842,27 @@ def assign_detections_to_persons(
 # F3 — PPE inference on per-person expanded crops
 # ───────────────────────────────────────────────────────────────────────────
 
+def expanded_person_crop(
+    frame: np.ndarray,
+    person_box: Tuple,
+    margin: float,
+) -> Tuple[Optional[np.ndarray], Tuple[int, int, int, int]]:
+    fh, fw = frame.shape[:2]
+    px1, py1, px2, py2 = person_box
+    pw = max(1.0, px2 - px1)
+    ph = max(1.0, py2 - py1)
+
+    cx1 = max(0,  int(px1 - pw * margin))
+    cy1 = max(0,  int(py1 - ph * (margin + 0.10)))
+    cx2 = min(fw, int(px2 + pw * margin))
+    cy2 = min(fh, int(py2 + ph * margin))
+
+    crop = frame[cy1:cy2, cx1:cx2]
+    if crop.size == 0 or crop.shape[0] < 32 or crop.shape[1] < 32:
+        return None, (cx1, cy1, cx2, cy2)
+    return crop, (cx1, cy1, cx2, cy2)
+
+
 def detect_ppe_on_crops(
     frame: np.ndarray,
     person_boxes: List[Tuple],
@@ -852,22 +883,11 @@ def detect_ppe_on_crops(
     if not model_config or not person_boxes:
         return []
 
-    fh, fw     = frame.shape[:2]
     crop_dets: List[Dict] = []
 
     for pidx, pb in enumerate(person_boxes):
-        px1, py1, px2, py2 = pb
-        pw = max(1.0, px2 - px1)
-        ph = max(1.0, py2 - py1)
-
-        # Expand: extra top margin to capture hard hat above head
-        cx1 = max(0,  int(px1 - pw * PPE_CROP_MARGIN))
-        cy1 = max(0,  int(py1 - ph * (PPE_CROP_MARGIN + 0.10)))
-        cx2 = min(fw, int(px2 + pw * PPE_CROP_MARGIN))
-        cy2 = min(fh, int(py2 + ph * PPE_CROP_MARGIN))
-
-        crop = frame[cy1:cy2, cx1:cx2]
-        if crop.size == 0 or crop.shape[0] < 32 or crop.shape[1] < 32:
+        crop, (cx1, cy1, _, _) = expanded_person_crop(frame, pb, PPE_CROP_MARGIN)
+        if crop is None:
             continue
 
         results = model_config["ppe_model"].predict(
@@ -902,6 +922,145 @@ def detect_ppe_on_crops(
             })
 
     return crop_dets
+
+
+def no_violation_recheck(
+    frame: np.ndarray,
+    person_box: Tuple,
+    person_index: int,
+    device,
+) -> Tuple[bool, List[Dict]]:
+    """
+    Confirm a would-be NO-Violation crop before saving it.
+
+    Returns (person_confirmed, violation_dets). If violation_dets is non-empty,
+    callers should save those violations instead of a NO-Violation row.
+    """
+    if not model_config:
+        return False, []
+
+    ppe_person_ids = model_config.get("ppe_person_class_ids", [])
+    classes = list(dict.fromkeys([
+        *model_config["violation_class_ids"],
+        *ppe_person_ids,
+    ]))
+    if not classes:
+        return False, []
+
+    crop, (cx1, cy1, _, _) = expanded_person_crop(frame, person_box, PPE_CROP_MARGIN)
+    if crop is None:
+        return False, []
+
+    violation_thresholds = {
+        cname: min(1.0, get_class_confidence_threshold(cname) * NO_VIOLATION_RECHECK_CONF_MULTIPLIER)
+        for cname in ALLOWED_VIOLATION_CLASS_NAMES
+    }
+    predict_conf = min(
+        [NO_VIOLATION_RECHECK_PERSON_CONF, *violation_thresholds.values()]
+        or [NO_VIOLATION_RECHECK_PERSON_CONF]
+    )
+
+    try:
+        results = model_config["ppe_model"].predict(
+            source=crop,
+            imgsz=NO_VIOLATION_RECHECK_IMAGE_SIZE,
+            conf=predict_conf,
+            iou=DETECTION_IOU,
+            classes=classes,
+            device=device,
+            verbose=False,
+        )
+    except Exception as exc:
+        print(
+            f"[NO-VIOLATION WARN] Recheck failed pidx={person_index}: {exc}",
+            flush=True,
+        )
+        return False, []
+
+    person_confirmed = False
+    violation_dets: List[Dict] = []
+    if not results or len(results[0].boxes) == 0:
+        return False, []
+
+    for box, cls_id, conf in zip(
+        results[0].boxes.xyxy.cpu().numpy(),
+        results[0].boxes.cls.cpu().numpy(),
+        results[0].boxes.conf.cpu().numpy(),
+    ):
+        cname = model_config["class_names"].get(int(cls_id), str(int(cls_id)))
+        cval = float(conf)
+
+        if int(cls_id) in ppe_person_ids and cval >= NO_VIOLATION_RECHECK_PERSON_CONF:
+            person_confirmed = True
+            continue
+
+        if not is_allowed_violation_class(cname):
+            continue
+        if cval < violation_thresholds.get(cname, get_class_confidence_threshold(cname)):
+            continue
+
+        lx1, ly1, lx2, ly2 = [float(v) for v in box]
+        violation_dets.append({
+            "class_name": cname,
+            "confidence": cval,
+            "box": (lx1 + cx1, ly1 + cy1, lx2 + cx1, ly2 + cy1),
+            "person_index": person_index,
+        })
+
+    return person_confirmed, violation_dets
+
+
+def recheck_no_violation_candidates(
+    frame: np.ndarray,
+    person_boxes: List[Tuple],
+    raw_dets: List[Dict],
+    device,
+) -> Tuple[List[Dict], Dict[int, Tuple]]:
+    confirmed_no_violation: Dict[int, Tuple] = {}
+    if not person_boxes:
+        return raw_dets, confirmed_no_violation
+
+    person_to_violations: Dict[int, List[Dict]] = {}
+    for det in raw_dets:
+        pidx = det.get("person_index", -1)
+        person_to_violations.setdefault(pidx, []).append(det)
+
+    violating_person_boxes = [
+        person_boxes[pidx]
+        for pidx in person_to_violations
+        if pidx >= 0 and pidx < len(person_boxes)
+    ]
+
+    added_violations = 0
+    suppressed = 0
+    for pidx, p_box in enumerate(person_boxes):
+        if (p_box[3] - p_box[1]) < NO_VIOLATION_MIN_PERSON_HEIGHT:
+            continue
+        if person_to_violations.get(pidx):
+            continue
+        if any(boxes_refer_to_same_person(p_box, v_box) for v_box in violating_person_boxes):
+            continue
+
+        if not NO_VIOLATION_RECHECK_ENABLED:
+            confirmed_no_violation[pidx] = tuple(float(v) for v in p_box)
+            continue
+
+        person_confirmed, recheck_dets = no_violation_recheck(frame, p_box, pidx, device)
+        if recheck_dets:
+            raw_dets.extend(recheck_dets)
+            added_violations += len(recheck_dets)
+        elif person_confirmed:
+            confirmed_no_violation[pidx] = tuple(float(v) for v in p_box)
+        else:
+            suppressed += 1
+
+    if added_violations or suppressed:
+        print(
+            "[NO-VIOLATION] Recheck "
+            f"added_violations={added_violations} suppressed={suppressed}",
+            flush=True,
+        )
+    return raw_dets, confirmed_no_violation
 
 
 # ───────────────────────────────────────────────────────────────────────────
@@ -1444,23 +1603,47 @@ def build_violation_class_ids(ppe_names: Dict[int, str]) -> List[int]:
     return matched
 
 
+def build_ppe_person_class_ids(ppe_names: Dict[int, str]) -> List[int]:
+    matched = [
+        cid for cid, cname in ppe_names.items()
+        if cname.strip().lower() == "person"
+    ]
+    if matched:
+        print(f"[MODEL] PPE person class ids: {matched}", flush=True)
+    else:
+        print("[WARN] PPE model has no Person class for NO-Violation recheck", flush=True)
+    return matched
+
+
 def init_models() -> None:
     global model_config, face_model, mtcnn, resnet, facenet_device
 
-    for label, path in [
-        ("Person", PERSON_MODEL_PATH),
-        ("PPE",    PPE_MODEL_PATH),
-        ("Face",   FACE_MODEL_PATH),
-    ]:
+    same_person_ppe_model = SINGLE_MODEL_MODE or (
+        Path(PERSON_MODEL_PATH).resolve(strict=False) == Path(PPE_MODEL_PATH).resolve(strict=False)
+    )
+
+    model_paths = [("PPE", PPE_MODEL_PATH), ("Face", FACE_MODEL_PATH)]
+    if not same_person_ppe_model:
+        model_paths.insert(0, ("Person", PERSON_MODEL_PATH))
+
+    for label, path in model_paths:
         if not Path(path).exists():
             raise FileNotFoundError(f"{label} model not found: {path}")
 
     device = 0 if torch.cuda.is_available() else "cpu"
     print(f"[MODEL] Inference device: {device}", flush=True)
 
-    print(f"[MODEL] Loading person model: {PERSON_MODEL_PATH}", flush=True)
-    person_model       = YOLO(str(PERSON_MODEL_PATH))
-    person_class_names = {int(k): str(v) for k, v in person_model.names.items()}
+    if same_person_ppe_model:
+        print(f"[MODEL] Loading single Person+PPE model: {PPE_MODEL_PATH}", flush=True)
+        ppe_model = YOLO(str(PPE_MODEL_PATH))
+        ppe_class_names = {int(k): str(v) for k, v in ppe_model.names.items()}
+        person_model = ppe_model
+        person_class_names = ppe_class_names
+    else:
+        print(f"[MODEL] Loading person model: {PERSON_MODEL_PATH}", flush=True)
+        person_model = YOLO(str(PERSON_MODEL_PATH))
+        person_class_names = {int(k): str(v) for k, v in person_model.names.items()}
+
     person_class_ids   = [
         cid for cid, cn in person_class_names.items()
         if cn.strip().lower() == "person"
@@ -1468,13 +1651,15 @@ def init_models() -> None:
     if not person_class_ids:
         raise ValueError(f"Person model has no 'person' class: {person_class_names}")
 
-    print(f"[MODEL] Loading PPE model: {PPE_MODEL_PATH}", flush=True)
-    ppe_model       = YOLO(str(PPE_MODEL_PATH))
-    ppe_class_names = {int(k): str(v) for k, v in ppe_model.names.items()}
+    if not same_person_ppe_model:
+        print(f"[MODEL] Loading PPE model: {PPE_MODEL_PATH}", flush=True)
+        ppe_model = YOLO(str(PPE_MODEL_PATH))
+        ppe_class_names = {int(k): str(v) for k, v in ppe_model.names.items()}
 
     violation_class_ids = build_violation_class_ids(ppe_class_names)
     if not violation_class_ids:
         raise ValueError(f"No violation classes matched: {ppe_class_names}")
+    ppe_person_class_ids = build_ppe_person_class_ids(ppe_class_names)
 
     boot_class_ids = [
         cid for cid, cn in ppe_class_names.items() if is_boot_class(cn)
@@ -1506,6 +1691,7 @@ def init_models() -> None:
         "ppe_model":           ppe_model,
         "class_names":         ppe_class_names,
         "violation_class_ids": violation_class_ids,
+        "ppe_person_class_ids": ppe_person_class_ids,
         "boot_class_ids":      boot_class_ids,
         "device":              device,
     }
@@ -1563,14 +1749,14 @@ def get_hls_streaming_url(stream_name: str) -> Optional[str]:
 
 
 def load_configured_cameras() -> bool:
-    global camera_sources, last_camera_refresh
+    global camera_sources, camera_project_ids, last_camera_refresh
     reconnect_db()
     ct  = aws_creds["cameras_table"]
     pct = aws_creds["ppe_cameras_table"]
     try:
         with db_connection.cursor() as cur:
             cur.execute(
-                f"SELECT c.id FROM {pct} pc "
+                f"SELECT c.id, pc.project_id FROM {pct} pc "
                 f"JOIN {ct} c ON c.id=pc.cam_id ORDER BY c.id"
             )
             rows = cur.fetchall()
@@ -1582,16 +1768,26 @@ def load_configured_cameras() -> bool:
     if not discovered:
         print("[CAMERA] No cameras in PPE camera table", flush=True)
         camera_sources = {}
+        camera_project_ids = {}
         return False
 
     valid: Dict[str, str] = {}
+    valid_project_ids: Dict[str, Optional[int]] = {}
+    project_lookup: Dict[str, Optional[int]] = {}
+    for r in rows:
+        cam_id = str(r["id"])
+        project_id = r.get("project_id")
+        project_lookup[cam_id] = int(project_id) if project_id is not None else None
+
     for cam_id, sname in discovered.items():
         if check_kvs_stream_exists(sname):
             valid[cam_id] = sname
+            valid_project_ids[cam_id] = project_lookup.get(cam_id)
         else:
             print(f"[KVS SKIP] Camera {cam_id}: stream '{sname}' not found", flush=True)
 
-    camera_sources      = valid
+    camera_sources     = valid
+    camera_project_ids = valid_project_ids
     last_camera_refresh = time.time()
     print(f"[CAMERA] {len(camera_sources)} active PPE cameras", flush=True)
     return bool(camera_sources)
@@ -1713,6 +1909,7 @@ def capture_all_cameras_parallel() -> List[Dict[str, Any]]:
             if frame is not None:
                 captured.append({
                     "camera_id":  cid,
+                    "project_id": camera_project_ids.get(str(cid)),
                     "frame":      frame,
                     "timestamp":  ts,
                     "local_path": path,
@@ -2089,14 +2286,20 @@ def detect_and_reid(
         # ── Step 7: Deduplication (F5 — DEDUPE_IOU=0.35) ─────────────────
         raw_dets = dedupe_detections(raw_dets)
 
-        if not raw_dets and not person_boxes:
+        # ── Step 8: Recheck would-be NO-Violation crops before persistence ─
+        raw_dets, confirmed_no_violation_boxes = recheck_no_violation_candidates(
+            frame, person_boxes, raw_dets, device
+        )
+        raw_dets = dedupe_detections(raw_dets)
+
+        if not raw_dets and not confirmed_no_violation_boxes:
             meta["detections"]   = []
             meta["persons"]      = {}
             meta["person_boxes"] = []
             meta["face_boxes"]   = []
             continue
 
-        # ── Step 8: Full-frame face detection ────────────────────────────
+        # ── Step 9: Full-frame face detection ────────────────────────────
         face_res = face_model.predict(
             source=frame,
             imgsz=optimal_imgsz(frame, FACE_IMAGE_SIZE),
@@ -2112,13 +2315,13 @@ def detect_and_reid(
                     tuple(float(x) for x in fb.xyxy[0].tolist())
                 )
 
-        # ── Step 9: Group violations by person index ──────────────────────
+        # ── Step 10: Group violations by person index ─────────────────────
         person_to_violations: Dict[int, List[Dict]] = {}
         for det in raw_dets:
             pidx = det.get("person_index", -1)
             person_to_violations.setdefault(pidx, []).append(det)
 
-        # ── Step 10: Re-ID every detected person, plus unmatched violation groups.
+        # ── Step 11: Re-ID every detected person, plus unmatched violation groups.
         person_reid_results: Dict[int, Dict] = {}
         reid_targets = set(range(len(person_boxes))) | set(person_to_violations.keys())
         for pidx in sorted(reid_targets):
@@ -2163,9 +2366,7 @@ def detect_and_reid(
             for pidx in person_to_violations
             if pidx >= 0 and pidx < len(person_boxes)
         ]
-        for pidx, p_box in enumerate(person_boxes):
-            if (p_box[3] - p_box[1]) < NO_VIOLATION_MIN_PERSON_HEIGHT:
-                continue
+        for pidx, p_box in confirmed_no_violation_boxes.items():
             if person_to_violations.get(pidx):
                 continue
             if any(boxes_refer_to_same_person(p_box, v_box) for v_box in violating_person_boxes):
@@ -2273,6 +2474,7 @@ def _iso_or_none(value: Any) -> Optional[str]:
 def push_ppe_to_welspun(
     s3_client_obj,
     frame_id: int,
+    project_id: Optional[int],
     cam_id: int,
     timestamp: datetime,
     frame_url: str,
@@ -2292,6 +2494,7 @@ def push_ppe_to_welspun(
     payload = {
         "frame": {
             "frame_id": frame_id,
+            "project_id": project_id,
             "cam_id": cam_id,
             "timestamp": _iso_or_none(timestamp),
             "frame_url": _presign(s3_client_obj, frame_url),
@@ -2375,6 +2578,7 @@ def save_to_db(frame_metadata_list: List[Dict[str, Any]]) -> None:
         webhook_people: Dict[int, Dict[str, Any]] = {}
         try:
             cam_id = int(meta["camera_id"])
+            project_id = meta.get("project_id")
             timestamp = meta["timestamp"]
             frame_url = meta["s3_url"]
             person_reid = meta.get("persons", {})
@@ -2444,6 +2648,7 @@ def save_to_db(frame_metadata_list: List[Dict[str, Any]]) -> None:
                 push_ppe_to_welspun(
                     s3_client_obj=s3_client,
                     frame_id=frame_id,
+                    project_id=project_id,
                     cam_id=cam_id,
                     timestamp=timestamp,
                     frame_url=frame_url,
@@ -2553,6 +2758,10 @@ def initialize() -> bool:
     p("Crop PPE inference (F3)",        ENABLE_CROP_PPE)
     p("  Crop inference size",          f"{PPE_CROP_INFERENCE_SIZE}px")
     p("  Crop margin",                  f"{PPE_CROP_MARGIN:.0%}")
+    p("NO-Violation recheck",           NO_VIOLATION_RECHECK_ENABLED)
+    p("  Recheck image size",           f"{NO_VIOLATION_RECHECK_IMAGE_SIZE}px")
+    p("  Recheck threshold multiplier", NO_VIOLATION_RECHECK_CONF_MULTIPLIER)
+    p("  Recheck person confidence",    NO_VIOLATION_RECHECK_PERSON_CONF)
     p("Overlap gate threshold (F4)",    f"{PPE_OVERLAP_GATE_THRESHOLD:.0%}")
     p("Dedup IoU (F5, lowered)",        DETECTION_DEDUPE_IOU)
     p("Boot crop imgsz fixed 640 (F6)", "enabled")

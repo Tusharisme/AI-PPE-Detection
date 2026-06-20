@@ -326,6 +326,7 @@ Table: OfficeLens_persontrace_cameras
 Table: OfficeLens_ppe_cameras
 -----------------------------
   - cam_id (INTEGER)
+  - project_id (INTEGER) [Nullable]
   Foreign Keys:
     - ['cam_id'] -> OfficeLens_cameras.['id']
 
@@ -351,6 +352,7 @@ Table: OfficeLens_ppe_frames
   - timestamp (DATETIME)
   - frame_url (VARCHAR(1024))
   - created_at (TIMESTAMP) [Nullable] [Default: CURRENT_TIMESTAMP]
+  - comment (TEXT) [Nullable]
   Foreign Keys:
     - ['cam_id'] -> OfficeLens_cameras.['id']
 

@@ -162,7 +162,7 @@ Validation and test data came from the CCTV dataset only.
 
 ## Training Setup
 
-Pretrained base model:
+Historical pretrained base model:
 
 ```text
 best.pt
@@ -175,7 +175,7 @@ Hardhat, Mask, NO-Hardhat, NO-Mask, NO-Safety Vest, Person,
 Safety Cone, Safety Vest, machinery, vehicle
 ```
 
-For the new training run, YOLO changed the model head from 10 classes to 4 classes and transferred compatible weights.
+For the new training run, YOLO changed the model head from 10 classes to 4 classes and transferred compatible weights. The old top-level `best.pt` file is no longer kept in the cleaned runtime repo; the active production PPE model is the trained 4-class `best.pt` under the run directory shown below.
 
 Training command:
 
@@ -241,80 +241,101 @@ Final validation report from the best model:
 
 ## Local Image Validation
 
-The best model was tested with the person-gated inference script:
+The current local validation entrypoint is `run_ppe_worker_4_local_images.py`. It runs the same worker logic without writing to MySQL, S3, or Welspun.
 
 ```bash
-.train-venv/bin/python test_person_gated_violations.py \
+.train-venv/bin/python run_ppe_worker_4_local_images.py \
   --input Images \
-  --model runs/detect/training/runs/ppe2_archive_4class_from_best_150ep_pat20_v1/weights/best.pt \
-  --save-dir local_person_gated_ppe2_archive_best_150ep
+  --save-dir local_ppe_worker_4_strict_images \
+  --person-confidence 0.45 \
+  --no-enable-tiled-person-detection \
+  --no-enable-crowd-recovery
 ```
 
-Output path:
+To match the current stricter EC2 settings and recover the far-person hardhat case tested on `Images/2.png`, pass these environment overrides:
 
-```text
-local_person_gated_ppe2_archive_best_150ep
+```bash
+PERSON_FALLBACK_ENABLED=FALSE PPE_CROP_INFERENCE_SIZE=960 \
+.train-venv/bin/python run_ppe_worker_4_local_images.py \
+  --input Images/2.png \
+  --save-dir local_ppe_worker_4_image2_no_fallback_crop960 \
+  --person-confidence 0.45 \
+  --no-enable-tiled-person-detection \
+  --no-enable-crowd-recovery
 ```
 
-This generated 13 annotated images, `summary.csv`, and `results.json`.
+The local runner writes annotated images, crop images, and `results.json` under the requested `--save-dir`. Generated local inference folders are not part of the cleaned runtime repository.
 
 ## Inference Logic
 
-For local image testing and the live worker, the production pipeline now uses two models:
+For local image testing and the live worker, the production pipeline uses these models:
 
-1. A COCO person detector (`yolov8n.pt`) detects `person` boxes above `PERSON_CONFIDENCE`.
-2. The trained PPE model detects only `NO-Hardhat`, `NO-Safety Vest`, and `NO-Safety Boots` on the full frame.
-3. PPE detections that cannot be assigned to a detected person are dropped.
-4. The worker keeps the best detection per person/class, with up to two `NO-Safety Boots` boxes per person.
-5. Optional boot crop/color checks can run after person assignment when enabled.
-6. The live worker uploads only frames with violations to S3 and writes frame/detection rows to MySQL.
+| Purpose | Local Path | Image Path |
+| --- | --- | --- |
+| PPE violation model | `runs/detect/training/runs/ppe2_archive_4class_from_best_150ep_pat20_v1/weights/best.pt` | `/app/best.pt` |
+| Person model | `runs/detect/training/runs/ppe_person_yolov8n_finetune_v1/weights/best.pt` | `/app/person_model.pt` |
+| Face model | `test_face_detection/yolov8n-face.pt` | `/app/yolov8n-face.pt` |
+
+Current worker flow:
+
+1. `ppe_worker_4.py` detects people using the custom person model.
+2. The PPE model detects `NO-Hardhat`, `NO-Safety Vest`, and `NO-Safety Boots` on the full frame.
+3. The PPE model also runs on expanded per-person crops when `ENABLE_CROP_PPE=TRUE`.
+4. PPE detections that cannot be assigned to a detected person are dropped unless the configured confidence bypass allows them.
+5. People with no assigned PPE violation are saved as `NO-Violation` rows so the frontend can draw green boxes.
+6. Re-ID uses the face model and FaceNet where a usable face crop exists.
+7. The live worker uploads frames/crops to S3, writes frame/detection rows to MySQL, and can fire-and-forget POST the same frame data to Welspun DataHub.
 
 ## Current Production Runtime Settings
 
-Current Docker Compose command pattern:
+Current Docker image build inputs:
 
 ```bash
-MODEL_SOURCE="runs/detect/training/runs/ppe2_archive_4class_from_best_150ep_pat20_v1/weights/best.pt" \
-PERSON_MODEL_SOURCE="yolov8n.pt" \
-PERSON_CONFIDENCE=0.33 \
-PERSON_IMAGE_SIZE=1280 \
-CLASS_CONFIDENCES="NO-Hardhat=0.20,NO-Safety Vest=0.20,NO-Safety Boots=0.15" \
-DRY_RUN=FALSE \
-docker compose up --build
+docker build \
+  --build-arg WORKER_SOURCE=ppe_worker_4.py \
+  --build-arg MODEL_SOURCE=runs/detect/training/runs/ppe2_archive_4class_from_best_150ep_pat20_v1/weights/best.pt \
+  --build-arg PERSON_MODEL_SOURCE=runs/detect/training/runs/ppe_person_yolov8n_finetune_v1/weights/best.pt \
+  --build-arg FACE_MODEL_SOURCE=test_face_detection/yolov8n-face.pt \
+  -t ai-ppe-detection:latest .
 ```
 
-Effective runtime thresholds:
+Recommended strict runtime settings:
 
-| Class | Confidence |
-| --- | ---: |
-| Person model `person` | 0.33 |
-| PPE model `NO-Hardhat` | 0.20 |
-| PPE model `NO-Safety Vest` | 0.20 |
-| PPE model `NO-Safety Boots` | 0.15 |
+| Setting | Value | Reason |
+| --- | --- | --- |
+| `PERSON_CONFIDENCE` | `0.45` | Reduces false person boxes. |
+| `PERSON_IMAGE_SIZE` | `1280` | Current person inference size. |
+| `PERSON_IOU` | `0.70` | Current person NMS IoU. |
+| `PERSON_FALLBACK_ENABLED` | `FALSE` | Avoids high-resolution fallback false positives seen in local testing. |
+| `ENABLE_TILED_PERSON_DETECTION` | `FALSE` | Avoids extra false positives in wide frames. |
+| `ENABLE_CROWD_RECOVERY` | `FALSE` | Local testing produced more false detections than the strict profile. |
+| `PPE_CROP_INFERENCE_SIZE` | `960` | Helps recover far-person hardhat misses from crop inference. |
+| `ENABLE_CROP_PPE` | `TRUE` | Keeps per-person crop PPE recovery enabled. |
+| `IMAGE_SIZE` | `1920` | Full-frame PPE inference size. |
+| `CLASS_CONFIDENCES` | `NO-Hardhat=0.20,NO-Safety Vest=0.20,NO-Safety Boots=0.15` | Current class thresholds. |
 
-Other important runtime settings:
+Other active runtime settings:
 
 | Setting | Value |
 | --- | --- |
-| `IMAGE_SIZE` | 1920 |
-| `PERSON_IMAGE_SIZE` | 1280 |
-| `PERSON_IOU` | 0.45 |
 | `DETECTION_IOU` | 0.45 |
 | `PPE_SNAPSHOT_INTERVAL` | 40 seconds |
 | `DRY_RUN` | FALSE |
 | `ENABLE_BOOT_CROPS` | FALSE |
+| `ENABLE_BOOT_COLOR_CHECK` | FALSE |
+| `WELSPUN_WEBHOOK_ENABLED` | TRUE in Welspun test/prod runs, FALSE for local tests |
 
 ## Docker/ECR Deployment
 
-Build and push the production two-model image to ECR:
+Build and push the current worker image to ECR:
 
 ```bash
 python3 push_to_ecr.py \
   --creds ppe_creds.txt \
   --repository ai-ppe-detection \
   --tag ppe2-two-model-person033 \
-  --model-path runs/detect/training/runs/ppe2_archive_4class_from_best_150ep_pat20_v1/weights/best.pt \
-  --person-model-path yolov8n.pt
+  --model-path training/runs/ppe_v3_person_yolov8s_single_gpu_batch6_foreground_v1/weights/best.pt \
+  --worker-source ppe_worker_4.py
 ```
 
 Run on EC2:
@@ -334,61 +355,138 @@ sudo docker rm ppe-worker || true
 sudo docker run -d \
   --name ppe-worker \
   --restart unless-stopped \
-  -e PPE_SNAPSHOT_INTERVAL=40 \
-  -e DETECTION_CONFIDENCE=0.10 \
+  -e DRY_RUN=FALSE \
+  -e DEBUG=FALSE \
+  -e SINGLE_MODEL_MODE=TRUE \
+  -e PPE_MODEL_PATH=/app/best.pt \
+  -e PERSON_MODEL_PATH=/app/best.pt \
   -e PERSON_CONFIDENCE=0.33 \
-  -e PERSON_IMAGE_SIZE=1280 \
-  -e PERSON_IOU=0.45 \
+  -e PERSON_IMAGE_SIZE=1920 \
+  -e PERSON_IOU=0.70 \
+  -e PERSON_FALLBACK_ENABLED=FALSE \
+  -e ENABLE_TILED_PERSON_DETECTION=FALSE \
+  -e ENABLE_CROWD_RECOVERY=FALSE \
+  -e PPE_CROP_INFERENCE_SIZE=960 \
   -e IMAGE_SIZE=1920 \
   -e CLASS_CONFIDENCES="NO-Hardhat=0.20,NO-Safety Vest=0.20,NO-Safety Boots=0.15" \
-  -e DRY_RUN=FALSE \
+  -e WELSPUN_WEBHOOK_ENABLED=true \
+  -e WELSPUN_WEBHOOK_BASE_URL=https://welappsuat.welspun.com \
+  -e WELSPUN_WEBHOOK_AUTH_KEY='U2blpNYCc8cIdS2ZpNd7' \
+  -e WELSPUN_PRESIGN_EXPIRY=604800 \
   "$ECR_IMAGE_URI"
 
 sudo docker logs -f ppe-worker
 ```
 
-## S3 Backfill Inference
+## Welspun DataHub Webhook
 
-Use `backfill_s3_ppe_inference.py` when frames are already present in S3 and
-only DB rows need to be created. The script lists S3 images, infers `cam_id`
-from the key folder, runs the same two-model person-gated pipeline, and inserts
-the existing S3 URL into `OfficeLens_ppe_frames`.
+`ppe_worker_4.py` can push one payload per saved PPE frame to Welspun DataHub after the local DB commit. This is fire-and-forget: failures are logged and do not stop the detection loop.
 
-Dry run on a small sample:
+Endpoint:
 
-```bash
-.train-venv/bin/python backfill_s3_ppe_inference.py \
-  --creds ppe_creds.txt \
-  --prefix "ppe/" \
-  --limit 20 \
-  --dry-run \
-  --summary-json local_s3_ppe_backfill_dry_run.json
+```text
+POST https://welappsuat.welspun.com/webhooks/report_ppe_violation
 ```
 
-Write detected violation frames to DB:
+Runtime variables:
 
-```bash
-.train-venv/bin/python backfill_s3_ppe_inference.py \
-  --creds ppe_creds.txt \
-  --prefix "ppe/" \
-  --summary-json local_s3_ppe_backfill.json
-```
+| Variable | Value |
+| --- | --- |
+| `WELSPUN_WEBHOOK_ENABLED` | `true` to send, `false` to disable |
+| `WELSPUN_WEBHOOK_BASE_URL` | `https://welappsuat.welspun.com` |
+| `WELSPUN_WEBHOOK_AUTH_KEY` | Provided webhook key |
+| `WELSPUN_PRESIGN_EXPIRY` | `604800` seconds |
 
-If you want to process one camera folder only:
+Image URLs are presigned before sending. HTTP `409` is treated as success because it means the frame was already received.
 
-```bash
-.train-venv/bin/python backfill_s3_ppe_inference.py \
-  --creds ppe_creds.txt \
-  --prefix "ppe/<cam_id>/"
-```
+Welspun project ID mapping is applied only in the webhook payload:
 
-By default the script uses S3 `LastModified` for the DB timestamp and skips
-`frame_url` values that already exist in the PPE frames table.
+| Local Project ID | Welspun Project ID |
+| ---: | ---: |
+| 1 | 6428 |
+| 2 | 6427 |
+
+The local MySQL writes keep the local project IDs unchanged.
+
+## Cleaned Runtime Repository
+
+The cleaned runtime repo intentionally keeps only the current worker surface and active models.
+
+Kept:
+
+- `ppe_worker_4.py`
+- `run_ppe_worker_4_local_images.py`
+- `push_to_ecr.py`
+- `Dockerfile`
+- `docker-compose.yml`
+- `Images/`
+- `test_face_detection/`
+- the two active runtime model weights under `runs/detect/training/runs/.../weights/best.pt`
+
+Removed/generated paths are not required for current production runtime:
+
+- old workers `ppe_worker.py`, `ppe_worker_2.py`, `ppe_worker_3.py`
+- old local test scripts
+- generated `local_ppe_worker_4_*` output folders
+- unused top-level weights such as `best.pt`, `yolov8n.pt`, `yolov8s.pt`, `yolo26n.pt`
+- unused training-run `last.pt` files
 
 ## Important Notes
 
 - `NO-Safety Boots` is the weakest class in validation metrics because it has fewer examples and comes only from the CCTV dataset.
-- The production image includes both `/app/person_model.pt` and `/app/best.pt`; do not mount over those paths unless intentionally changing models.
+- The production image includes `/app/best.pt`, `/app/person_model.pt`, and `/app/yolov8n-face.pt`; do not mount over those paths unless intentionally changing models.
 - The model performs best when violations are person-gated, because full-frame violation detections can otherwise attach to background objects.
 - Increasing `PERSON_CONFIDENCE` reduces false person boxes but can also remove small/far workers, which then removes their assigned violations.
+- `PERSON_FALLBACK_ENABLED=FALSE` is recommended for the current strict profile because high-resolution fallback produced false person boxes in local testing.
+- `PPE_CROP_INFERENCE_SIZE=960` recovered a hardhat miss on a far person in `Images/2.png`; the same frame still missed the vest because the PPE model did not emit a `NO-Safety Vest` detection for that person.
+- `NO-Violation` rows are intentionally saved for detected people with no assigned PPE violation so the frontend can render green boxes.
 - The runtime class thresholds should be tuned from real CCTV results, not only validation metrics.
+
+## RF-DETR Training
+
+The active RF-DETR dataset is the same four-class single-detector dataset used by the YOLOv8s run:
+
+```text
+training/datasets/ppe_v3_person_single_detector
+```
+
+It contains RF-DETR/COCO folders:
+
+```text
+train/_annotations.coco.json
+valid/_annotations.coco.json
+test/_annotations.coco.json
+```
+
+Install RF-DETR training dependencies:
+
+```bash
+.train-venv/bin/python -m pip install --upgrade --force-reinstall \
+  --index-url https://download.pytorch.org/whl/cu121 \
+  torch==2.5.1 torchvision==0.20.1
+
+.train-venv/bin/python -m pip install --upgrade "rfdetr[train]" tensorboard "numpy<2"
+```
+
+Run RF-DETR Medium training:
+
+```bash
+.train-venv/bin/python training/scripts/train_rfdetr_medium_single_detector.py \
+  --dataset-dir training/datasets/ppe_v3_person_single_detector \
+  --output-dir training/runs/ppe_v3_person_rfdetr_medium_1024_batch2_accum8_v1 \
+  --results-csv training/runs/ppe_v3_person_rfdetr_medium_1024_batch2_accum8_v1/results.csv \
+  --device cuda \
+  --epochs 150 \
+  --batch-size 2 \
+  --grad-accum-steps 8 \
+  --resolution 1024 \
+  --lr 0.0001 \
+  --lr-encoder 0.00015 \
+  --num-workers 4 \
+  --early-stopping \
+  --early-stopping-patience 25 \
+  --tensorboard \
+  --run-test
+```
+
+The script writes `run_args.json`, `train_kwargs.json`, RF-DETR checkpoints, TensorBoard event logs, and `results.csv` under the output directory. If `1024` resolution runs out of GPU memory, rerun with `--batch-size 1 --grad-accum-steps 16` to keep the effective batch size at 16.
